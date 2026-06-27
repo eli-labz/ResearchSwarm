@@ -1,4 +1,6 @@
 import unittest
+import shutil
+import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -7,7 +9,14 @@ from researchswarm import ExecutionStatus, ResearchSwarmEntrypoint
 
 class ResearchSwarmEntrypointTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.entrypoint = ResearchSwarmEntrypoint()
+        self.tempdir = tempfile.TemporaryDirectory()
+        source_db = Path(__file__).resolve().parents[1] / "AI-Memory" / "memory.db"
+        self.memory_db_path = Path(self.tempdir.name) / "memory.db"
+        shutil.copy2(source_db, self.memory_db_path)
+        self.entrypoint = ResearchSwarmEntrypoint(memory_db_path=self.memory_db_path)
+
+    def tearDown(self) -> None:
+        self.tempdir.cleanup()
 
     def test_text_based_task_routes_to_digital_execution(self) -> None:
         report = self.entrypoint.route("Summarize the run log and draft a report")
@@ -32,12 +41,22 @@ class ResearchSwarmEntrypointTests(unittest.TestCase):
         self.assertEqual(report.status, ExecutionStatus.HYBRID_WORKFLOW)
         self.assertTrue(report.digital_work)
         self.assertTrue(report.human_handoff)
+        self.assertIn("Draft an inspection checklist", report.digital_work[0])
+        self.assertIn("visit the lab to inspect the rack", report.human_handoff[0])
 
     def test_research_task_surfaces_repo_commands(self) -> None:
         report = self.entrypoint.route("Prepare the data and run a baseline training experiment")
 
         self.assertIn("uv run prepare.py", report.suggested_commands)
         self.assertIn("uv run train.py", report.suggested_commands)
+
+    def test_unknown_task_requests_clarification(self) -> None:
+        report = self.entrypoint.route("Handle this somehow")
+
+        self.assertEqual(report.status, ExecutionStatus.CLARIFICATION_REQUIRED)
+        self.assertTrue(report.human_handoff)
+        self.assertTrue(report.next_action)
+        self.assertEqual(report.digital_work, ["Clarify the digital scope before attempting execution."])
 
     def test_research_task_executes_primary_workflow(self) -> None:
         report = self.entrypoint.execute("Prepare the data and run a baseline training experiment overnight")
@@ -92,6 +111,8 @@ class ResearchSwarmEntrypointTests(unittest.TestCase):
         self.assertEqual(report.status, ExecutionStatus.HYBRID_WORKFLOW)
         self.assertEqual(report.executor_name, "report-generator")
         self.assertTrue(report.human_handoff)
+        self.assertIn("Draft a report", report.digital_work[0])
+        self.assertIn("visit the lab to verify the rack", report.human_handoff[0])
 
 
 if __name__ == "__main__":

@@ -118,6 +118,10 @@ class TaskProfile:
     confidence: float
     text_signals: list[str] = field(default_factory=list)
     human_action_signals: list[str] = field(default_factory=list)
+    digital_segments: list[str] = field(default_factory=list)
+    human_segments: list[str] = field(default_factory=list)
+    ambiguous_segments: list[str] = field(default_factory=list)
+    open_questions: list[str] = field(default_factory=list)
     cognitive_functions: list[CognitiveFunction] = field(default_factory=list)
     recommended_action: str = ""
     execution_steps: list[str] = field(default_factory=list)
@@ -146,16 +150,25 @@ def _ordered_unique(items: Iterable[str]) -> list[str]:
 class DigitalCognitiveLaborAgent:
     """Routes tasks based on whether software can complete them autonomously."""
 
+    def _segment_instruction(self, instruction: str) -> list[str]:
+        parts = re.split(r"\b(?:and then|then|after that|afterwards|before|and)\b|[;,]", instruction, flags=re.IGNORECASE)
+        segments = [part.strip(" .") for part in parts if part.strip(" .")]
+        return segments or [instruction.strip()]
+
     def classify_task(self, instruction: str) -> TaskProfile:
         tokens = _tokenize(instruction)
         text_hits = [token for token in tokens if token in TEXT_SIGNALS]
         human_hits = [token for token in tokens if token in HUMAN_ACTION_SIGNALS]
         human_pattern_hits = [pattern for pattern in HUMAN_ONLY_PATTERNS if re.search(pattern, instruction, re.IGNORECASE)]
+        segments = self._segment_instruction(instruction)
+        digital_segments, human_segments, ambiguous_segments = self._classify_segments(segments)
 
         text_score = len(text_hits)
         human_score = len(human_hits) + len(human_pattern_hits) * 2
 
-        if text_score and human_score:
+        if digital_segments and human_segments:
+            domain = TaskDomain.HYBRID
+        elif text_score and human_score:
             domain = TaskDomain.HYBRID
         elif human_score:
             domain = TaskDomain.HUMAN_ACTION
@@ -168,8 +181,9 @@ class DigitalCognitiveLaborAgent:
         confidence = 0.5 if total_score == 0 else round(max(text_score, human_score) / total_score, 2)
 
         cognitive_functions = self._infer_cognitive_functions(domain)
-        execution_steps = self._build_execution_steps(domain, instruction)
+        execution_steps = self._build_execution_steps(domain, instruction, digital_segments, human_segments, ambiguous_segments)
         recommended_action = self._recommend_action(domain)
+        open_questions = self._build_open_questions(domain, ambiguous_segments)
 
         return TaskProfile(
             instruction=instruction,
@@ -177,10 +191,42 @@ class DigitalCognitiveLaborAgent:
             confidence=confidence,
             text_signals=_ordered_unique(text_hits),
             human_action_signals=_ordered_unique(human_hits + human_pattern_hits),
+            digital_segments=digital_segments,
+            human_segments=human_segments,
+            ambiguous_segments=ambiguous_segments,
+            open_questions=open_questions,
             cognitive_functions=cognitive_functions,
             recommended_action=recommended_action,
             execution_steps=execution_steps,
         )
+
+    def _classify_segments(self, segments: list[str]) -> tuple[list[str], list[str], list[str]]:
+        digital_segments: list[str] = []
+        human_segments: list[str] = []
+        ambiguous_segments: list[str] = []
+
+        for segment in segments:
+            segment_profile = self._score_segment(segment)
+            if segment_profile["text_score"] and segment_profile["human_score"]:
+                ambiguous_segments.append(segment)
+            elif segment_profile["human_score"]:
+                human_segments.append(segment)
+            elif segment_profile["text_score"]:
+                digital_segments.append(segment)
+            else:
+                ambiguous_segments.append(segment)
+
+        return digital_segments, human_segments, ambiguous_segments
+
+    def _score_segment(self, segment: str) -> dict[str, int]:
+        tokens = _tokenize(segment)
+        text_score = sum(1 for token in tokens if token in TEXT_SIGNALS)
+        human_score = sum(1 for token in tokens if token in HUMAN_ACTION_SIGNALS)
+        human_score += sum(2 for pattern in HUMAN_ONLY_PATTERNS if re.search(pattern, segment, re.IGNORECASE))
+        return {
+            "text_score": text_score,
+            "human_score": human_score,
+        }
 
     def _infer_cognitive_functions(self, domain: TaskDomain) -> list[CognitiveFunction]:
         if domain is TaskDomain.TEXT_BASED:
@@ -223,14 +269,24 @@ class DigitalCognitiveLaborAgent:
             return "Complete the digital portion now, isolate the physical/manual portion, and create an explicit handoff boundary."
         return "Clarify the task before execution because the domain is not yet distinguishable."
 
-    def _build_execution_steps(self, domain: TaskDomain, instruction: str) -> list[str]:
+    def _build_execution_steps(
+        self,
+        domain: TaskDomain,
+        instruction: str,
+        digital_segments: list[str],
+        human_segments: list[str],
+        ambiguous_segments: list[str],
+    ) -> list[str]:
         if domain is TaskDomain.TEXT_BASED:
-            return [
+            steps = [
                 "Parse the request into inputs, constraints, and outputs.",
                 "Execute the required digital work product.",
                 "Verify the result against the stated objective.",
                 "Return the artifact, evidence, and any residual risks.",
             ]
+            if digital_segments:
+                steps.insert(1, f"Focus on the digital fragments: {'; '.join(digital_segments)}.")
+            return steps
         if domain is TaskDomain.HUMAN_ACTION:
             return [
                 "Identify the exact real-world action that cannot be completed by software.",
@@ -239,17 +295,35 @@ class DigitalCognitiveLaborAgent:
                 "Request confirmation or evidence after the human step is done.",
             ]
         if domain is TaskDomain.HYBRID:
-            return [
+            steps = [
                 "Separate the task into digital sub-work and human-action sub-work.",
-                "Execute the digital sub-work immediately.",
+                "Execute the digital sub-work immediately and prepare the handoff boundary.",
                 "Create a minimal handoff package for the human-action sub-work.",
                 "Resume verification once the human-action evidence is supplied.",
             ]
+            if digital_segments:
+                steps.insert(1, f"Digital sub-work: {'; '.join(digital_segments)}.")
+            if human_segments:
+                steps.insert(3, f"Human sub-work: {'; '.join(human_segments)}.")
+            if ambiguous_segments:
+                steps.append(f"Resolve the ambiguous fragments before final completion: {'; '.join(ambiguous_segments)}.")
+            return steps
         return [
             "Restate the task.",
             "Ask a clarifying question focused on the execution medium.",
             f"Clarify whether this request is meant to stay inside software systems: {instruction}",
         ]
+
+    def _build_open_questions(self, domain: TaskDomain, ambiguous_segments: list[str]) -> list[str]:
+        if domain is TaskDomain.UNKNOWN:
+            return [
+                "Should this task stay entirely inside software, or does it require a real-world step?",
+            ]
+        if domain is TaskDomain.HYBRID and ambiguous_segments:
+            return [
+                f"Which of these fragments should remain with the human operator: {'; '.join(ambiguous_segments)}?",
+            ]
+        return []
 
     def process(self, instruction: str) -> dict:
         profile = self.classify_task(instruction)

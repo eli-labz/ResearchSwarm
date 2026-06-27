@@ -19,6 +19,7 @@ import sys
 from typing import Protocol
 
 from researchswarm_agent import DigitalCognitiveLaborAgent, TaskDomain
+from researchswarm_memory import DEFAULT_MEMORY_DB_PATH, ResearchSwarmMemoryStore
 
 
 class ExecutionStatus(str, Enum):
@@ -49,6 +50,7 @@ class RoutedTask:
     executor_name: str = ""
     execution_summary: str = ""
     execution_artifact: str = ""
+    memory_context: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         payload = asdict(self)
@@ -83,6 +85,9 @@ class RoutedTask:
         if self.execution_artifact:
             lines.append("execution_artifact:")
             lines.extend(f"  {item}" for item in self.execution_artifact.splitlines())
+        if self.memory_context:
+            lines.append("memory_context:")
+            lines.extend(f"- {item}" for item in self.memory_context)
         lines.append(f"next_action: {self.next_action}")
         return "\n".join(lines)
 
@@ -314,8 +319,9 @@ class FileAnalysisExecutor:
 
 
 class ResearchSwarmEntrypoint:
-    def __init__(self) -> None:
+    def __init__(self, memory_db_path: str | Path | None = None) -> None:
         self.classifier = DigitalCognitiveLaborAgent()
+        self.memory_store = ResearchSwarmMemoryStore(memory_db_path or DEFAULT_MEMORY_DB_PATH)
         self.executors: list[TaskExecutor] = [
             ResearchWorkflowExecutor(),
             ReportExecutor(),
@@ -325,17 +331,6 @@ class ResearchSwarmEntrypoint:
 
     def route(self, instruction: str) -> RoutedTask:
         profile = self.classifier.classify_task(instruction)
-        segments = self._segment_instruction(instruction)
-        classified_segments = [(segment, self.classifier.classify_task(segment)) for segment in segments]
-
-        digital_segments = [
-            segment for segment, segment_profile in classified_segments
-            if segment_profile.domain in {TaskDomain.TEXT_BASED, TaskDomain.UNKNOWN}
-        ]
-        human_segments = [
-            segment for segment, segment_profile in classified_segments
-            if segment_profile.domain is TaskDomain.HUMAN_ACTION
-        ]
 
         if profile.domain is TaskDomain.TEXT_BASED:
             status = ExecutionStatus.DIGITAL_EXECUTION
@@ -346,12 +341,14 @@ class ResearchSwarmEntrypoint:
         else:
             status = ExecutionStatus.CLARIFICATION_REQUIRED
 
-        digital_work = self._build_digital_work(profile.domain, digital_segments or [instruction])
-        human_handoff = self._build_human_handoff(profile.domain, human_segments)
+        digital_work = self._build_digital_work(profile.domain, profile.digital_segments or [instruction])
+        human_handoff = self._build_human_handoff(profile.domain, profile.human_segments)
+        if profile.open_questions:
+            human_handoff.extend(profile.open_questions)
         suggested_commands = self._suggest_commands(instruction) if status is not ExecutionStatus.HUMAN_HANDOFF_REQUIRED else []
         verification_targets = self._build_verification_targets(status)
 
-        return RoutedTask(
+        report = RoutedTask(
             instruction=instruction,
             domain=profile.domain.value,
             status=status,
@@ -362,7 +359,11 @@ class ResearchSwarmEntrypoint:
             suggested_commands=suggested_commands,
             verification_targets=verification_targets,
             next_action=profile.recommended_action,
+            memory_context=self.memory_store.recent_context_lines(),
         )
+
+        self.memory_store.record_route(report.to_dict() | {"summary": report.to_text()})
+        return report
 
     def execute(
         self,
@@ -389,9 +390,11 @@ class ResearchSwarmEntrypoint:
                 routed_task.executor_name = result.executor_name
                 routed_task.execution_summary = result.summary
                 routed_task.execution_artifact = result.artifact
+                self.memory_store.record_execution(routed_task.to_dict() | {"summary": result.summary})
                 return routed_task
 
         routed_task.execution_summary = "No executor matched; returning routing guidance only."
+        self.memory_store.record_execution(routed_task.to_dict() | {"summary": routed_task.execution_summary})
         return routed_task
 
     def _segment_instruction(self, instruction: str) -> list[str]:
