@@ -42,7 +42,7 @@ wheels = [
 ]
 
 [[package]]
-name = "autoresearch"
+name = "researchswarm"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

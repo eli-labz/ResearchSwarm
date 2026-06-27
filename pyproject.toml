@@ -1,7 +1,7 @@
 [project]
-name = "autoresearch"
+name = "researchswarm"
 version = "0.1.0"
-description = "Autonomous pretraining research swarm"
+description = "Autonomous research swarm and digital cognitive labor router"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -15,6 +15,13 @@ dependencies = [
     "tiktoken>=0.11.0",
     "torch==2.9.1",
 ]
+
+[project.scripts]
+researchswarm = "researchswarm:main"
+
+[project.urls]
+Homepage = "https://github.com/eli-labz/ResearchSwarm"
+Repository = "https://github.com/eli-labz/ResearchSwarm"
 
 [tool.uv.sources]
 torch = [
