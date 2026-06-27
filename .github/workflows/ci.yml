@@ -22,28 +22,18 @@ jobs:
       - name: Set up Python 3.11
         run: uv python install 3.11
 
-      - name: Create virtual env and install lightweight deps
-        run: |
-          uv venv
-          uv pip install numpy pandas requests tiktoken rustbpe
+      - name: Install lightweight deps (no torch/CUDA)
+        run: uv pip install --python 3.11 numpy pandas requests tiktoken rustbpe
 
-      - name: Smoke-test classifier
-        run: |
-          uv run python -c "from researchswarm_agent import DigitalCognitiveLaborAgent; a = DigitalCognitiveLaborAgent(); r = a.classify_task('run a training experiment'); print('Classifier OK:', r.domain.value)"
+      - name: Smoke-test classifier (PYTHONPATH=.)
+        env:
+          PYTHONPATH: .
+        run: python3 -c "from researchswarm_agent import DigitalCognitiveLaborAgent; a=DigitalCognitiveLaborAgent(); r=a.classify_task('run training'); print('Classifier OK:', r.domain.value)"
 
-      - name: Smoke-test memory store
-        run: |
-          uv run python -c "import tempfile, os; from researchswarm_memory import ResearchSwarmMemoryStore; store = ResearchSwarmMemoryStore(db_path=os.path.join(tempfile.mkdtemp(),'t.db')); store.record_event('routing','test',{}); ctx=store.get_recent_context(); print('Memory OK, records:', len(ctx))"
+      - name: Smoke-test memory store (PYTHONPATH=.)
+        env:
+          PYTHONPATH: .
+        run: python3 -c "import tempfile,os; from researchswarm_memory import ResearchSwarmMemoryStore; s=ResearchSwarmMemoryStore(os.path.join(tempfile.mkdtemp(),'t.db')); s.record_event('r','t',{}); print('Memory OK:', len(s.get_recent_context()))"
 
-      - name: Validate pyproject.toml is parseable
-        run: |
-          uv run python -c "import tomllib; data=tomllib.loads(open('pyproject.toml').read()); print('pyproject.toml OK, name:', data['project']['name'], 'version:', data['project']['version'])"
-
-      - name: Upload dist artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: smoke-test-${{ github.sha }}
-          path: .venv/
-          if-no-files-found: ignore
-          retention-days: 1
+      - name: Validate pyproject.toml
+        run: python3 -c "import tomllib; d=tomllib.loads(open('pyproject.toml').read()); print('pyproject OK:', d['project']['name'], d['project']['version'])"
