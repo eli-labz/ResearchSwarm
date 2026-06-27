@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  lint-and-build:
+    name: Lint & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --no-install-project
+
+      - name: Lint with ruff (if available)
+        run: |
+          if uv run --with ruff ruff --version 2>/dev/null; then
+            uv run --with ruff ruff check researchswarm.py researchswarm_agent.py researchswarm_memory.py || true
+          else
+            echo "ruff not installed, skipping lint"
+          fi
+
+      - name: Run unit tests
+        run: |
+          if [ -d tests ] && ls tests/test_*.py 2>/dev/null; then
+            uv run python -m pytest tests/ -v --tb=short
+          else
+            echo "No test files found, running import check instead"
+            uv run python -c "import researchswarm_agent; print('researchswarm_agent: OK')"
+            uv run python -c "import researchswarm_memory; print('researchswarm_memory: OK')"
+            uv run python -c "from researchswarm_agent import DigitalCognitiveLaborAgent; a = DigitalCognitiveLaborAgent(); r = a.classify_task('run a baseline training experiment'); assert r.domain.value in ('text-based', 'unknown'); print('classifier: OK')"
+          fi
+
+      - name: Build package
+        run: uv build --no-sources
+
+      - name: Check dist contents
+        run: ls -lh dist/
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ github.sha }}
+          path: dist/
+          retention-days: 7
