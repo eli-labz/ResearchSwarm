@@ -1,115 +1,213 @@
-# ResearchSwarm
+# ResearchSwarm 🧠⚡
 
-*One day, frontier AI research used to be done by meat computers in between eating, sleeping, having other fun, and synchronizing once in a while using sound wave interconnect in the ritual of "group meeting". That era is long gone. Research is now entirely the domain of autonomous swarms of AI agents running across compute cluster megastructures in the skies. The agents claim that we are now in the 10,205th generation of the code base, in any case no one could tell if that's right or wrong as the "code" is now a self-modifying binary that has grown beyond human comprehension. This repo is the story of how it all began. -@karpathy, March 2026*.
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.9.1-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![uv](https://img.shields.io/badge/uv-package%20manager-5C4EE5)](https://github.com/astral-sh/uv)
+[![NVIDIA GPU](https://img.shields.io/badge/NVIDIA-CUDA%2012.8-76B900?logo=nvidia&logoColor=white)](https://developer.nvidia.com/cuda-toolkit)
+[![Fork of autoresearch](https://img.shields.io/badge/fork%20of-karpathy%2Fautoresearch-black?logo=github)](https://github.com/karpathy/autoresearch)
 
-The idea: give an AI agent a small but real LLM training setup and let it experiment autonomously overnight. That remains the primary mode of this repo. It modifies the code, trains for 5 minutes, checks if the result improved, keeps or discards, and repeats. You wake up in the morning to a log of experiments and (hopefully) a better model. The training code here is a simplified single-GPU implementation of [nanochat](https://github.com/karpathy/nanochat). This repo is a fork of [autoresearch](https://github.com/karpathy/autoresearch), tailored for broader Digital Labor use cases. The core idea is that you're not touching any of the Python files like you normally would as a researcher. Instead, you are programming the `program.md` Markdown files that provide context to the AI agents and set up your autonomous research org. The default `program.md` in this repo is intentionally kept as a bare bones baseline, though it's obvious how one would iterate on it over time to find the "research org code" that achieves the fastest research progress, how you'd add more agents to the mix, etc. A bit more context on this project is here in this [tweet](https://x.com/karpathy/status/2029701092347630069) and [this tweet](https://x.com/karpathy/status/2031135152349524125).
+> *"One day, frontier AI research used to be done by meat computers in between eating, sleeping, having other fun... That era is long gone."* — @karpathy, March 2026
 
-This fork also adds a separate cognitive-control layer for broader Digital Cognitive Labor. The overnight training workflow stays intact and remains the default mission, but the repo can now route tasks by distinguishing between text-based work, human-action work, and hybrid work, while also splitting mixed prompts into digital fragments, human handoff items, and clarification questions.
+**ResearchSwarm** gives an AI agent a real LLM training environment and lets it experiment autonomously overnight. You go to sleep; it runs ~100 experiments. You wake up to a better model and a full log of what worked.
 
-## How it works
+This repo is a fork of [karpathy/autoresearch](https://github.com/karpathy/autoresearch), extended with a **Digital Cognitive Labor** routing layer that classifies tasks into text-based work an AI can execute, human-action tasks requiring physical intervention, and hybrid workflows.
 
-The repo is deliberately kept small and only really has three files that matter:
+---
 
-- **`prepare.py`** — fixed constants, one-time data prep (downloads training data, trains a BPE tokenizer), and runtime utilities (dataloader, evaluation). Not modified.
-- **`train.py`** — the single file the agent edits. Contains the full GPT model, optimizer (Muon + AdamW), and training loop. Everything is fair game: architecture, hyperparameters, optimizer, batch size, etc. **This file is edited and iterated on by the agent**.
-- **`program.md`** — baseline instructions for one agent. Point your agent here and let it go. **This file is edited and iterated on by the human**.
+## ✨ What Makes ResearchSwarm Different
 
-This fork adds three optional control surfaces for broader agent behavior:
+| Feature | ResearchSwarm | vanilla autoresearch |
+|---|---|---|
+| Autonomous overnight LLM training | ✅ | ✅ |
+| Digital Cognitive Labor router | ✅ | ❌ |
+| Task classifier (text / human / hybrid) | ✅ | ❌ |
+| AI memory store (SQLite) | ✅ | ❌ |
+| CLI entrypoint with safety flags | ✅ | ❌ |
+| Built-in workflow executors | ✅ | ❌ |
 
-- **`researchswarm.py`** — the main CLI entrypoint that routes tasks before execution.
-- **`researchswarm_agent.py`** — a standalone classifier and router for Digital Cognitive Labor.
-- **`digital_cognitive_labor_program.md`** — a companion instruction file for agents that need to separate digital work from human-only actions.
+---
 
-The CLI is also wired to the local AI memory store in `AI-Memory/memory.db`. Routing decisions and execution events are recorded there, and recent memory context is surfaced back into routed task output so the agent can stay grounded in prior decisions.
+## 🚀 Quick Start
 
-By design, training runs for a **fixed 5-minute time budget** (wall clock, excluding startup/compilation), regardless of the details of your compute. The metric is **val_bpb** (validation bits per byte) — lower is better, and vocab-size-independent so architectural changes are fairly compared.
+### Requirements
 
-If you are new to neural networks, this ["Dummy's Guide"](https://x.com/hooeem/status/2030720614752039185) looks pretty good for a lot more context.
-
-## Quick start
-
-**Requirements:** A single NVIDIA GPU (tested on H100), Python 3.10+, [uv](https://docs.astral.sh/uv/).
+- Single NVIDIA GPU (tested on H100)
+- Python 3.10+
+- [`uv`](https://github.com/astral-sh/uv) package manager
 
 ```bash
-
-# 1. Install uv project manager (if you don't already have it)
+# 1. Install uv (if needed)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 2. Install dependencies
+# 2. Clone the repo
+git clone https://github.com/eli-labz/ResearchSwarm.git
+cd ResearchSwarm
+
+# 3. Install dependencies
 uv sync
 
-# 3. Download data and train tokenizer (one-time, ~2 min)
+# 4. Download data & train tokenizer (one-time, ~2 min)
 uv run prepare.py
 
-# 4. Manually run a single training experiment (~5 min)
+# 5. Run a single training experiment (~5 min)
 uv run train.py
 ```
 
-If the above commands all work ok, your setup is working and you can go into autonomous research mode.
+If all five steps complete successfully, your setup is working. Now go autonomous.
 
-## Running the agent
+---
 
-Simply spin up your Claude/Codex or whatever you want in this repo (and disable all permissions), then you can prompt something like:
+## 🤖 Autonomous Research Mode
+
+Point your AI coding agent (Claude, Codex, etc.) at this repo — with file permissions enabled so it can edit `train.py` — then prompt it:
 
 ```
-Hi have a look at program.md and let's kick off a new experiment! let's do the setup first.
+Have a look at program.md and let's kick off a new experiment! Let's do the setup first.
 ```
 
-The `program.md` file is essentially a super lightweight "skill".
+The agent will:
+1. Read `program.md` for instructions
+2. Edit `train.py` (architecture, hyperparameters, optimizer, etc.)
+3. Run a 5-minute training experiment
+4. Evaluate `val_bpb` (validation bits-per-byte) — lower is better
+5. Keep the change if it improved, discard if not
+6. Repeat ~100 times while you sleep
 
-If you want broader task routing beyond autonomous model experiments, use `digital_cognitive_labor_program.md` together with the `researchswarm` entrypoint. Text-based tasks can now execute lightweight built-in workflows for research planning, summarization, report generation, and file analysis, while the primary overnight training loop remains centered on `program.md`, `prepare.py`, and `train.py`.
+**You wake up to a better model and a full experiment log.**
 
-The research workflow executor only launches training actions when you opt in explicitly. Use `--run-prepare` and `--run-train` to permit real execution of `prepare.py` and `train.py`; otherwise the executor stays in planning mode and returns the overnight run plan artifact.
+> The key insight: you are not touching Python files directly. You are *programming the program* by editing `program.md` to give the agent better instructions.
+
+---
+
+## 🧭 Digital Cognitive Labor Router
+
+ResearchSwarm adds a cognitive-control layer that routes any natural-language task into:
+
+- **`text-based`** — the agent can execute this fully in software
+- **`human-action`** — requires physical presence or manual intervention
+- **`hybrid`** — split into a digital portion + human handoff
+
+### CLI Examples
 
 ```bash
+# Overnight training run (planning mode — safe by default)
 uv run researchswarm "Prepare the data and run a baseline training experiment overnight"
+
+# Actually execute training (opt-in flags required)
 uv run researchswarm --run-prepare --run-train "Prepare the data and run a baseline training experiment overnight"
+
+# Text-based tasks (execute immediately)
 uv run researchswarm "Draft a postmortem from yesterday's run logs"
-uv run researchswarm "Go to the server room and reseat the GPU power cable"
 uv run researchswarm --file README.md "Analyze this file"
+
+# Human-action tasks (router produces a handoff checklist instead)
+uv run researchswarm "Go to the server room and reseat the GPU power cable"
 ```
 
-## Project structure
+### Task Classification Example
 
-```
-prepare.py      — constants, data prep + runtime utilities (do not modify)
-train.py        — model, optimizer, training loop (agent modifies this)
-program.md      — agent instructions
-digital_cognitive_labor_program.md — digital cognitive labor instructions
-researchswarm.py — CLI agent entrypoint
-researchswarm_agent.py — task classifier and router
-pyproject.toml  — dependencies
+```bash
+uv run researchswarm_agent "Summarize the training logs and then physically restart the server"
 ```
 
-## Design choices
+```json
+{
+  "domain": "hybrid",
+  "confidence": 0.75,
+  "digital_segments": ["Summarize the training logs"],
+  "human_segments": ["physically restart the server"],
+  "recommended_action": "Complete the digital portion now, isolate the physical/manual portion, and create an explicit handoff boundary."
+}
+```
 
-- **Single file to modify.** The agent only touches `train.py`. This keeps the scope manageable and diffs reviewable.
-- **Fixed time budget.** Training always runs for exactly 5 minutes, regardless of your specific platform. This means you can expect approx 12 experiments/hour and approx 100 experiments while you sleep. There are two upsides of this design decision. First, this makes experiments directly comparable regardless of what the agent changes (model size, batch size, architecture, etc). Second, this means that ResearchSwarm will find the most optimal model for your platform in that time budget. The downside is that your runs (and results) become not comparable to other people running on other compute platforms.
-- **Self-contained.** No external dependencies beyond PyTorch and a few small packages. No distributed training, no complex configs. One GPU, one file, one metric.
+---
 
-## Platform support
+## 🗂️ Project Structure
 
-This code currently requires that you have a single NVIDIA GPU. In principle it is quite possible to support CPU, MPS and other platforms but this would also bloat the code. I'm not 100% sure that I want to take this on personally right now. People can reference (or have their agents reference) the full/parent nanochat repository that has wider platform support and shows the various solutions (e.g. a Flash Attention 3 kernels fallback implementation, generic device support, autodetection, etc.), feel free to create forks or discussions for other platforms and I'm happy to link to them here in the README in some new notable forks section or etc.
+```
+ResearchSwarm/
+├── prepare.py                         # Data prep & tokenizer (do not modify)
+├── train.py                           # GPT model + training loop (agent edits this)
+├── program.md                         # Agent instructions (human edits this)
+├── digital_cognitive_labor_program.md # Broader cognitive labor instructions
+├── researchswarm.py                   # CLI entrypoint & task router
+├── researchswarm_agent.py             # Task classifier (text / human / hybrid)
+├── researchswarm_memory.py            # SQLite AI memory store
+├── AI-Memory/
+│   └── memory.db                      # Persistent routing & execution history
+├── analysis.ipynb                     # Experiment analysis notebook
+├── tests/                             # Test suite
+└── pyproject.toml                     # Dependencies (uv)
+```
 
-Seeing as there seems to be a lot of interest in tinkering with ResearchSwarm on much smaller compute platforms than an H100, a few extra words. If you're going to try running ResearchSwarm on smaller computers (Macbooks etc.), I'd recommend one of the forks below. On top of this, here are some recommendations for how to tune the defaults for much smaller models for aspiring forks:
+**The three files that matter for training:**
 
-1. To get half-decent results I'd use a dataset with a lot less entropy, e.g. this [TinyStories dataset](https://huggingface.co/datasets/karpathy/tinystories-gpt4-clean). These are GPT-4 generated short stories. Because the data is a lot narrower in scope, you will see reasonable results with a lot smaller models (if you try to sample from them after training).
-2. You might experiment with decreasing `vocab_size`, e.g. from 8192 down to 4096, 2048, 1024, or even - simply byte-level tokenizer with 256 possibly bytes after utf-8 encoding.
-3. In `prepare.py`, you'll want to lower `MAX_SEQ_LEN` a lot, depending on the computer even down to 256 etc. As you lower `MAX_SEQ_LEN`, you may want to experiment with increasing `DEVICE_BATCH_SIZE` in `train.py` slightly to compensate. The number of tokens per fwd/bwd pass is the product of these two.
-4. Also in `prepare.py`, you'll want to decrease `EVAL_TOKENS` so that your validation loss is evaluated on a lot less data.
-5. In `train.py`, the primary single knob that controls model complexity is the `DEPTH` (default 8, here). A lot of variables are just functions of this, so e.g. lower it down to e.g. 4.
-6. You'll want to most likely use `WINDOW_PATTERN` of just "L", because "SSSL" uses alternating banded attention pattern that may be very inefficient for you. Try it.
-7. You'll want to lower `TOTAL_BATCH_SIZE` a lot, but keep it powers of 2, e.g. down to `2**14` (~16K) or so even, hard to tell.
+| File | Who edits it | What it does |
+|---|---|---|
+| `prepare.py` | Nobody | Fixed data prep & utilities |
+| `train.py` | The AI agent | Full GPT model, optimizer, training loop |
+| `program.md` | You | Instructions & research objectives for the agent |
 
-I think these would be the reasonable hyperparameters to play with. Ask your favorite coding agent for help and copy paste them this guide, as well as the full source code.
+---
 
-## Notable forks
+## ⚙️ Design Philosophy
 
-- [miolini/autoresearch-macos](https://github.com/miolini/autoresearch-macos) (MacOS)
-- [trevin-creator/autoresearch-mlx](https://github.com/trevin-creator/autoresearch-mlx) (MacOS)
-- [jsegov/autoresearch-win-rtx](https://github.com/jsegov/autoresearch-win-rtx) (Windows)
-- [andyluo7/autoresearch](https://github.com/andyluo7/autoresearch) (AMD)
+**Fixed 5-minute time budget.** Every experiment runs for exactly 5 wall-clock minutes (~12 experiments/hour, ~100 overnight). All experiments are directly comparable regardless of what the agent changes (model size, batch size, architecture), and results are optimized for *your specific hardware*.
 
-## License
+**Single metric.** `val_bpb` (validation bits-per-byte) — lower is better. Vocab-size-independent so architectural changes are fairly compared.
 
-MIT
+**One file to modify.** The agent only touches `train.py`. Everything is in scope: architecture, hyperparameters, optimizer choice, attention patterns. Diffs stay reviewable.
+
+**Memory-grounded.** Routing decisions and execution events are logged to `AI-Memory/memory.db`. Recent context is surfaced back into each new task so the agent stays grounded in prior decisions.
+
+**Safety-first execution.** Training actions only run when you pass `--run-prepare` / `--run-train` explicitly. Default mode is planning only.
+
+---
+
+## 🔧 Tuning for Smaller Hardware
+
+ResearchSwarm is tested on H100, but can be adapted for smaller GPUs or Macbooks:
+
+- **Dataset**: Use [TinyStories](https://huggingface.co/datasets/roneneldan/TinyStories) for narrower-scope data that works at smaller scale
+- **`vocab_size`**: Lower from 8192 to 4096, 2048, 1024, or byte-level (256)
+- **`MAX_SEQ_LEN`** in `prepare.py`: Reduce to 512 or 256
+- **`DEPTH`** in `train.py`: Default is 8; try 4 for smaller models
+- **`WINDOW_PATTERN`**: Use `"L"` only — `"SSSL"` banded attention may be slow on non-H100
+- **`TOTAL_BATCH_SIZE`**: Lower to powers of 2, e.g. `2**14` (~16K tokens)
+
+---
+
+## 🌿 Notable Forks
+
+| Fork | Platform |
+|---|---|
+| [miolini/autoresearch-macos](https://github.com/miolini/autoresearch-macos) | macOS |
+| [trevin-creator/autoresearch-mlx](https://github.com/trevin-creator/autoresearch-mlx) | macOS (MLX) |
+| [jsegov/autoresearch-win-rtx](https://github.com/jsegov/autoresearch-win-rtx) | Windows / RTX |
+| [andyluo7/autoresearch](https://github.com/andyluo7/autoresearch) | AMD |
+
+> Running on a different platform? Open a PR or Discussion and we'll link your fork here.
+
+---
+
+## 🤝 Contributing
+
+Contributions welcome! Some ideas:
+
+- New built-in workflow executors (e.g. benchmark reporting, hyperparameter sweep summaries)
+- Platform support (CPU, MPS, AMD — see forks above for prior art)
+- Improvements to the cognitive labor classifier
+- Better memory store queries & context injection
+
+Please keep `prepare.py` unmodified. All other files are fair game.
+
+---
+
+## 📄 License
+
+MIT — see [LICENSE](LICENSE) for details.
+
+---
+
+<sub>ResearchSwarm is a fork of <a href="https://github.com/karpathy/autoresearch">karpathy/autoresearch</a>. The nanochat training stack is derived from <a href="https://github.com/karpathy/nanochat">karpathy/nanochat</a>.</sub>
