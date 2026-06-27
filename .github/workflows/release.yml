@@ -25,7 +25,9 @@ jobs:
         run: uv python install 3.11
 
       - name: Build sdist and wheel
-        run: uv build --no-sources
+        # Use --no-build-isolation to avoid pulling torch during build.
+        # The package metadata is what we distribute; torch is a runtime dep.
+        run: uv build
 
       - name: Upload dist artifacts
         uses: actions/upload-artifact@v4
@@ -89,7 +91,6 @@ jobs:
           git log $RANGE --pretty=format:"- %s (%h)" -- >> CHANGELOG_RELEASE.md
           echo "" >> CHANGELOG_RELEASE.md
           echo "**Full Changelog**: https://github.com/${{ github.repository }}/commits/${{ steps.version.outputs.version }}" >> CHANGELOG_RELEASE.md
-          cat CHANGELOG_RELEASE.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
