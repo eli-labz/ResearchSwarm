@@ -1,0 +1,104 @@
+name: Release & Publish
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  # ── 1. Build source distribution & wheel ──────────────────────────────────
+  build:
+    name: Build distribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Build sdist and wheel
+        run: uv build --no-sources
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  # ── 2. Publish to PyPI ────────────────────────────────────────────────────
+  publish-pypi:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/researchswarm
+    permissions:
+      id-token: write   # required for OIDC trusted publishing
+    steps:
+      - name: Download dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  # ── 3. Create GitHub Release ──────────────────────────────────────────────
+  github-release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          PREV_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]' | sed -n '2p')
+          if [ -z "$PREV_TAG" ]; then
+            RANGE="HEAD"
+          else
+            RANGE="$PREV_TAG..HEAD"
+          fi
+          echo "## Changes in ${{ steps.version.outputs.version }}" > CHANGELOG_RELEASE.md
+          echo "" >> CHANGELOG_RELEASE.md
+          git log $RANGE --pretty=format:"- %s (%h)" -- >> CHANGELOG_RELEASE.md
+          echo "" >> CHANGELOG_RELEASE.md
+          echo "**Full Changelog**: https://github.com/${{ github.repository }}/commits/${{ steps.version.outputs.version }}" >> CHANGELOG_RELEASE.md
+          cat CHANGELOG_RELEASE.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: ResearchSwarm ${{ steps.version.outputs.version }}
+          body_path: CHANGELOG_RELEASE.md
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.version, 'alpha') || contains(steps.version.outputs.version, 'beta') || contains(steps.version.outputs.version, 'rc') }}
+          files: |
+            dist/*.tar.gz
+            dist/*.whl
