@@ -1,0 +1,4 @@
+baseline run
+val_bpb improved from 1.24 to 1.20
+architecture: sliding-window attention
+optimizer: adamw

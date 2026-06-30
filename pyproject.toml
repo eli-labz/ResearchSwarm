@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "researchswarm"
+version = "0.1.0"
+description = "Autonomous research swarm built on a simplified single-GPU nanochat-derived training stack"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "kernels>=0.11.7",
+    "matplotlib>=3.10.8",
+    "numpy>=2.2.6",
+    "pandas>=2.3.3",
+    "pyarrow>=21.0.0",
+    "requests>=2.32.0",
+    "rustbpe>=0.1.0",
+    "tiktoken>=0.11.0",
+    "torch==2.9.1",
+]
+
+[project.scripts]
+researchswarm = "researchswarm:main"
+
+[project.urls]
+Homepage = "https://github.com/eli-labz/ResearchSwarm"
+Repository = "https://github.com/eli-labz/ResearchSwarm"
+
+[tool.setuptools]
+py-modules = ["prepare", "researchswarm", "researchswarm_agent", "researchswarm_wiki", "train"]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cu128" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true

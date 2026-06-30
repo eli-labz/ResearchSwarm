@@ -1,0 +1,1 @@
+optimizer adamw regressed val_bpb from 1.15 to 1.19
