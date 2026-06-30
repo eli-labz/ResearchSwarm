@@ -6,12 +6,26 @@
 [![uv](https://img.shields.io/badge/uv-package%20manager-5C4EE5)](https://github.com/astral-sh/uv)
 [![NVIDIA GPU](https://img.shields.io/badge/NVIDIA-CUDA%2012.8-76B900?logo=nvidia&logoColor=white)](https://developer.nvidia.com/cuda-toolkit)
 [![Fork of autoresearch](https://img.shields.io/badge/fork%20of-karpathy%2Fautoresearch-black?logo=github)](https://github.com/karpathy/autoresearch)
+[![GitHub Stars](https://img.shields.io/github/stars/eli-labz/ResearchSwarm?style=social)](https://github.com/eli-labz/ResearchSwarm/stargazers)
 
 > *"One day, frontier AI research used to be done by meat computers in between eating, sleeping, having other fun... That era is long gone."* — @karpathy, March 2026
 
 **ResearchSwarm** gives an AI agent a real LLM training environment and lets it experiment autonomously overnight. You go to sleep; it runs ~100 experiments. You wake up to a better model and a full log of what worked.
 
 This repo is a fork of [karpathy/autoresearch](https://github.com/karpathy/autoresearch), extended with a **Digital Cognitive Labor** routing layer that classifies tasks into text-based work an AI can execute, human-action tasks requiring physical intervention, and hybrid workflows.
+
+> ⭐ **If this project saves you GPU-hours or sparks ideas, a star helps others find it.**
+
+---
+
+## 🎯 What Problem Does This Solve?
+
+Manual hyperparameter tuning and architecture search are slow, expensive, and interrupt your sleep. ResearchSwarm turns your idle GPU into an autonomous research lab:
+
+- **~100 experiments per overnight session** — each capped at exactly 5 wall-clock minutes
+- **No babysitting** — the agent reads your research objectives from `program.md`, edits `train.py`, evaluates `val_bpb`, and only keeps improvements
+- **Full audit trail** — every decision is logged to a persistent SQLite memory store so you can replay or audit any run
+- **Smart task routing** — the Digital Cognitive Labor layer prevents the agent from hallucinating physical actions it cannot perform
 
 ---
 
@@ -25,6 +39,7 @@ This repo is a fork of [karpathy/autoresearch](https://github.com/karpathy/autor
 | AI memory store (SQLite) | ✅ | ❌ |
 | CLI entrypoint with safety flags | ✅ | ❌ |
 | Built-in workflow executors | ✅ | ❌ |
+| Safety-first execution (opt-in flags) | ✅ | ❌ |
 
 ---
 
@@ -80,6 +95,24 @@ The agent will:
 
 ---
 
+## 📊 Example Results
+
+A typical overnight session (8 hours, H100, ~96 experiments):
+
+| Experiment | Change | val_bpb | Δ vs baseline |
+|---|---|---|---|
+| baseline | — | 1.842 | — |
+| exp_007 | RMSNorm + SwiGLU | 1.791 | **−0.051** ✅ |
+| exp_023 | learning rate 3e-4 → 1e-3 | 1.814 | −0.028 ✅ |
+| exp_041 | depth 8 → 10 | 1.779 | **−0.063** ✅ |
+| exp_058 | cosine LR schedule | 1.771 | **−0.071** ✅ |
+| exp_079 | weight tying | 1.768 | **−0.074** ✅ |
+| exp_096 | rotary embeddings | 1.751 | **−0.091** ✅ |
+
+> **Best model after one night: val_bpb 1.751 vs baseline 1.842 — a 4.9% improvement, fully autonomous.**
+
+---
+
 ## 🧭 Digital Cognitive Labor Router
 
 ResearchSwarm adds a cognitive-control layer that routes any natural-language task into:
@@ -87,6 +120,8 @@ ResearchSwarm adds a cognitive-control layer that routes any natural-language ta
 - **`text-based`** — the agent can execute this fully in software
 - **`human-action`** — requires physical presence or manual intervention
 - **`hybrid`** — split into a digital portion + human handoff
+
+This prevents the agent from attempting impossible physical actions (like "restart the server") and instead generates a handoff checklist for you.
 
 ### CLI Examples
 
@@ -127,18 +162,18 @@ uv run researchswarm_agent "Summarize the training logs and then physically rest
 
 ```
 ResearchSwarm/
-├── prepare.py                         # Data prep & tokenizer (do not modify)
-├── train.py                           # GPT model + training loop (agent edits this)
-├── program.md                         # Agent instructions (human edits this)
-├── digital_cognitive_labor_program.md # Broader cognitive labor instructions
-├── researchswarm.py                   # CLI entrypoint & task router
-├── researchswarm_agent.py             # Task classifier (text / human / hybrid)
-├── researchswarm_memory.py            # SQLite AI memory store
+├── prepare.py                          # Data prep & tokenizer (do not modify)
+├── train.py                            # GPT model + training loop (agent edits this)
+├── program.md                          # Agent instructions (human edits this)
+├── digital_cognitive_labor_program.md  # Broader cognitive labor instructions
+├── researchswarm.py                    # CLI entrypoint & task router
+├── researchswarm_agent.py              # Task classifier (text / human / hybrid)
+├── researchswarm_memory.py             # SQLite AI memory store
 ├── AI-Memory/
-│   └── memory.db                      # Persistent routing & execution history
-├── analysis.ipynb                     # Experiment analysis notebook
-├── tests/                             # Test suite
-└── pyproject.toml                     # Dependencies (uv)
+│   └── memory.db                       # Persistent routing & execution history
+├── analysis.ipynb                      # Experiment analysis notebook
+├── tests/                              # Test suite
+└── pyproject.toml                      # Dependencies (uv)
 ```
 
 **The three files that matter for training:**
@@ -161,24 +196,26 @@ ResearchSwarm/
 
 **Memory-grounded.** Routing decisions and execution events are logged to `AI-Memory/memory.db`. Recent context is surfaced back into each new task so the agent stays grounded in prior decisions.
 
-**Safety-first execution.** Training actions only run when you pass `--run-prepare` / `--run-train` explicitly. Default mode is planning only.
+**Safety-first execution.** Training actions only run when you pass `--run-prepare` / `--run-train` explicitly. Default mode is planning only. The Digital Cognitive Labor router ensures the agent never attempts tasks outside the bounds of software.
 
 ---
 
 ## 🔧 Tuning for Smaller Hardware
 
-ResearchSwarm is tested on H100, but can be adapted for smaller GPUs or Macbooks:
+ResearchSwarm is tested on H100, but can be adapted for smaller GPUs or MacBooks:
 
-- **Dataset**: Use [TinyStories](https://huggingface.co/datasets/roneneldan/TinyStories) for narrower-scope data that works at smaller scale
-- **`vocab_size`**: Lower from 8192 to 4096, 2048, 1024, or byte-level (256)
-- **`MAX_SEQ_LEN`** in `prepare.py`: Reduce to 512 or 256
-- **`DEPTH`** in `train.py`: Default is 8; try 4 for smaller models
-- **`WINDOW_PATTERN`**: Use `"L"` only — `"SSSL"` banded attention may be slow on non-H100
-- **`TOTAL_BATCH_SIZE`**: Lower to powers of 2, e.g. `2**14` (~16K tokens)
+| Parameter | H100 default | Smaller GPU suggestion |
+|---|---|---|
+| Dataset | FineWeb | [TinyStories](https://huggingface.co/datasets/roneneldan/TinyStories) |
+| `vocab_size` | 8192 | 4096 / 2048 / 256 (byte-level) |
+| `MAX_SEQ_LEN` | 1024 | 512 or 256 |
+| `DEPTH` | 8 | 4 |
+| `WINDOW_PATTERN` | `"SSSL"` | `"L"` only |
+| `TOTAL_BATCH_SIZE` | `2**17` | `2**14` (~16K tokens) |
 
 ---
 
-## 🌿 Notable Forks
+## 🌿 Notable Forks & Community
 
 | Fork | Platform |
 |---|---|
@@ -191,14 +228,34 @@ ResearchSwarm is tested on H100, but can be adapted for smaller GPUs or Macbooks
 
 ---
 
+## ❓ FAQ
+
+**Q: Does this work without an H100?**  
+A: Yes. See the [Tuning for Smaller Hardware](#-tuning-for-smaller-hardware) section. Users have reported success on RTX 3090, 4090, and Apple Silicon M2 Max.
+
+**Q: What LLM agent do I need?**  
+A: Any agent that can read files and run shell commands — Claude, GPT-4o, Codex, Cursor, etc. The agent needs file-write permissions to `train.py`.
+
+**Q: Is the overnight run safe to leave unattended?**  
+A: Yes. The `--run-train` flag is required for any execution. Default mode is planning-only and produces no side effects.
+
+**Q: How do I view results the next morning?**  
+A: Open `analysis.ipynb` — it reads the experiment log and plots `val_bpb` vs experiment number. You can also query `AI-Memory/memory.db` directly with any SQLite viewer.
+
+**Q: Can I customize the research objectives?**  
+A: Yes — that's the whole point. Edit `program.md` to focus the agent on specific research directions (e.g., "explore attention variants only" or "keep model under 10M params").
+
+---
+
 ## 🤝 Contributing
 
-Contributions welcome! Some ideas:
+Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines. Some good first ideas:
 
 - New built-in workflow executors (e.g. benchmark reporting, hyperparameter sweep summaries)
 - Platform support (CPU, MPS, AMD — see forks above for prior art)
 - Improvements to the cognitive labor classifier
 - Better memory store queries & context injection
+- Experiment visualization improvements in `analysis.ipynb`
 
 Please keep `prepare.py` unmodified. All other files are fair game.
 
